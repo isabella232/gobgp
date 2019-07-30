@@ -841,8 +841,12 @@ func (s *BgpServer) notifyPostPolicyUpdateWatcher(peer *peer, pathList []*table.
 }
 
 func newWatchEventPeerState(peer *peer, m *fsmMsg) *watchEventPeerState {
-	_, rport := peer.fsm.RemoteHostPort()
-	laddr, lport := peer.fsm.LocalHostPort()
+	var laddr string
+	var rport, lport uint16
+	if peer.fsm.conn != nil {
+		_, rport = peer.fsm.RemoteHostPort()
+		laddr, lport = peer.fsm.LocalHostPort()
+	}
 	sentOpen := buildopen(peer.fsm.gConf, peer.fsm.pConf)
 	peer.fsm.lock.RLock()
 	recvOpen := peer.fsm.recvOpen
@@ -4034,12 +4038,6 @@ func (s *BgpServer) watch(opts ...watchOption) (w *watcher) {
 		}
 		if w.opts.initPeerState {
 			for _, peer := range s.neighborMap {
-				peer.fsm.lock.RLock()
-				notEstablished := peer.fsm.state != bgp.BGP_FSM_ESTABLISHED
-				peer.fsm.lock.RUnlock()
-				if notEstablished {
-					continue
-				}
 				w.notify(newWatchEventPeerState(peer, nil))
 			}
 		}
