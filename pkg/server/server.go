@@ -3721,7 +3721,13 @@ func (s *BgpServer) MonitorPeer(ctx context.Context, r *api.MonitorPeerRequest, 
 	}
 
 	go func() {
-		w := s.watch(watchPeerState(r.Current))
+		// So that both flags are not required, assume that if the
+		// initial_state flag is true, then the caller desires that the initial
+		// state be returned whether or not it is established and regardless of
+		// the value of `current`.
+		current := r.Current || r.InitialState
+		nonEstablished := r.InitialState
+		w := s.watch(watchPeerState(current, nonEstablished))
 		defer func() {
 			w.Stop()
 		}()
@@ -3846,6 +3852,7 @@ type watchOptions struct {
 	initUpdate     bool
 	initPostUpdate bool
 	initPeerState  bool
+	nonEstablished bool
 	tableName      string
 	recvMessage    bool
 }
@@ -3879,11 +3886,14 @@ func watchPostUpdate(current bool) watchOption {
 	}
 }
 
-func watchPeerState(current bool) watchOption {
+func watchPeerState(current, includeNonEstablished bool) watchOption {
 	return func(o *watchOptions) {
 		o.peerState = true
 		if current {
 			o.initPeerState = true
+			if includeNonEstablished {
+				o.nonEstablished = true
+			}
 		}
 	}
 }
@@ -4038,6 +4048,14 @@ func (s *BgpServer) watch(opts ...watchOption) (w *watcher) {
 		}
 		if w.opts.initPeerState {
 			for _, peer := range s.neighborMap {
+				if !w.opts.nonEstablished {
+					peer.fsm.lock.RLock()
+					notEstablished := peer.fsm.state != bgp.BGP_FSM_ESTABLISHED
+					peer.fsm.lock.RUnlock()
+					if notEstablished {
+						continue
+					}
+				}
 				w.notify(newWatchEventPeerState(peer, nil))
 			}
 		}
