@@ -573,6 +573,10 @@ func filterpath(peer *peer, path, old *table.Path) *table.Path {
 		}
 	}
 
+	if path.GetRouteFamily() == bgp.RF_EVPN {
+		return path
+	}
+
 	if path = peer.filterPathFromSourcePeer(path, old); path == nil {
 		return nil
 	}
